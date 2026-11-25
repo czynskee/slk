@@ -28,6 +28,11 @@
 //	                                add to sidebar + open it.
 //	ChannelJoinFailedMsg          - finder-driven join failed:
 //	                                log warning (toast TBD).
+//	ConversationClosedMsg         - the user left a channel or
+//	                                closed a DM (here or in another
+//	                                client): drop its rows, leave it
+//	                                if it is on screen.
+//	ConversationLeaveFailedMsg    - Slack refused a /leave: toast.
 //	ChannelMessagingCapabilityMsg - app/bot DM send probe landed:
 //	                                disable compose if unsendable.
 //	channelSearchDebounceMsg      - finder typing paused: issue one
@@ -57,6 +62,7 @@ package ui
 
 import (
 	"log"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -306,6 +312,40 @@ var reduceChannels reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 			text += ": " + m.Err.Error()
 		}
 		return toastWithClear(a, text, 4*time.Second), true
+
+	case ConversationClosedMsg:
+		if m.TeamID != a.activeTeamID {
+			// The engine already dropped the rows that workspace's
+			// next activation renders.
+			return nil, true
+		}
+		a.SetChannels(slices.DeleteFunc(slices.Clone(a.sidebar.Items()), func(it sidebar.ChannelItem) bool {
+			return it.ID == m.ChannelID
+		}))
+		a.channelFinder.Remove(m.ChannelID)
+		// The title's unread count is derived from the sidebar's rows.
+		a.notifyReadStateChanged()
+		if m.ChannelID != a.activeChannelID {
+			return nil, true
+		}
+		// The conversation on screen is gone. Go back to where the user
+		// was before it; the engine's rows are already gone, so the walk
+		// skips this conversation. With no history, open the first row.
+		if cmd := a.walkNavCmd(-1); cmd != nil {
+			return cmd, true
+		}
+		items := a.sidebar.Items()
+		if len(items) == 0 {
+			return nil, true
+		}
+		first := items[0]
+		a.sidebar.SelectByID(first.ID)
+		return func() tea.Msg {
+			return ChannelSelectedMsg{ID: first.ID, Name: first.Name, Type: first.Type}
+		}, true
+
+	case ConversationLeaveFailedMsg:
+		return toastWithClear(a, "Could not leave "+m.Name+": "+m.Err.Error(), 4*time.Second), true
 
 	case ChannelStarSetMsg:
 		key := m.TeamID + "\x00" + m.ChannelID

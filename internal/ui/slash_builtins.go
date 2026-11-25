@@ -7,6 +7,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/gammons/slk/internal/ids"
 	"github.com/gammons/slk/internal/slackfmt"
 	"github.com/gammons/slk/internal/ui/channelfinder"
+	"github.com/gammons/slk/internal/ui/messages"
+	"github.com/gammons/slk/internal/ui/sidebar"
 )
 
 // slashAway toggles presence, as the web client's /away did twice in a
@@ -137,6 +140,47 @@ func matchChannelByName(items []core.ChannelFinderItem, name string) (core.Chann
 // channelResultOf is the finder result openChannel takes for a row.
 func channelResultOf(it core.ChannelFinderItem) channelfinder.ChannelResult {
 	return channelfinder.ChannelResult{ID: it.ID, Name: it.Name, Type: it.Type, Joined: it.Joined}
+}
+
+// slashLeave leaves the channel the command was typed in, or closes it
+// when it is a DM or group DM (conversations.leave /
+// conversations.close, the documented Web API methods; there is no
+// capture of the web client's /leave). /close and /part are its aliases
+// (client_app_commands.json: alias_of "/leave"). A private channel asks
+// first, because it cannot be rejoined without an invite. The row stays
+// until Slack agrees: it goes with the ConversationClosedMsg the engine
+// sends, and a refusal is ConversationLeaveFailedMsg. name is the
+// command as typed, for the usage line.
+func slashLeave(name string) commandFunc {
+	return func(a *App, args commandArgs) tea.Cmd {
+		if strings.TrimSpace(args.Rest) != "" {
+			return a.refuseCommand(args.Origin, "Usage: "+name)
+		}
+		items := a.sidebar.Items()
+		i := slices.IndexFunc(items, func(it sidebar.ChannelItem) bool { return it.ID == args.Origin.channelID })
+		if i < 0 {
+			return a.refuseCommand(args.Origin, "That conversation isn't in the sidebar")
+		}
+		item := items[i]
+		inner := teaCmd(a.channels.Leave(ids.TeamID(args.Origin.teamID), ids.ChannelID(item.ID), item.Type))
+		if inner == nil {
+			return nil
+		}
+		label := messages.ChannelGlyph(item.Type) + item.Name
+		leave := func() tea.Msg {
+			failed, ok := inner().(ConversationLeaveFailedMsg)
+			if !ok {
+				return nil
+			}
+			failed.Name = label
+			return failed
+		}
+		if item.Type != "private" {
+			return leave
+		}
+		a.openConfirmPrompt("Leave "+label+"?", "You can't rejoin a private channel unless someone invites you.", leave)
+		return nil
+	}
 }
 
 // slashMsg opens the DM with one user. The web client's /msg resolved

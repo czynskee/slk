@@ -66,9 +66,9 @@ var slashCommands = map[string]commandFunc{
 	"/dm":     slashMsg("/dm"),
 	"/star":   slashStar,
 	"/unstar": slashUnstar,
-	"/leave":  slashUnsupported("/leave"),
-	"/close":  slashUnsupported("/close"),
-	"/part":   slashUnsupported("/part"),
+	"/leave":  slashLeave("/leave"),
+	"/close":  slashLeave("/close"),
+	"/part":   slashLeave("/part"),
 }
 
 // commandOrigin says where a slash command was typed: the conversation

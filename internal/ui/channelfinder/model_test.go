@@ -999,3 +999,24 @@ func TestHandleKey_NonASCIIQuery(t *testing.T) {
 		t.Errorf("after backspace query = %q, want %q", m.query, "中")
 	}
 }
+
+func TestRemoveDropsTheRowAndRefiltersWhenVisible(t *testing.T) {
+	m := New()
+	m.SetItems([]core.ChannelFinderItem{
+		{ID: "C1", Name: "general", Type: "channel", Joined: true},
+		{ID: "C2", Name: "random", Type: "channel", Joined: true},
+	})
+	m.Open()
+	if got := m.FilteredItems(); len(got) != 2 {
+		t.Fatalf("setup: filtered items = %+v, want both", got)
+	}
+
+	m.Remove("C2")
+
+	if got := m.Items(); len(got) != 1 || got[0].ID != "C1" {
+		t.Errorf("items after Remove = %+v, want only C1", got)
+	}
+	if got := m.FilteredItems(); len(got) != 1 || got[0].ID != "C1" {
+		t.Errorf("filtered items after Remove = %+v, want only C1", got)
+	}
+}

@@ -85,7 +85,8 @@ slk does the same:
 | `/join #channel` | Same as `/open` |
 | `/msg @someone [message]` | Open your DM with that person and put the message in its composer, ready to edit and send. slk doesn't send it for you, and if the DM already has a draft slk keeps that draft and leaves the message out |
 | `/dm @someone [message]` | Same as `/msg` |
-| `/leave`, `/close`, `/part` | Not supported yet; slk says so |
+| `/leave` | Leave the channel you typed it in, or close the DM or group DM. A private channel asks first, because you can't rejoin one without an invite. A closed DM comes back when someone posts in it. Takes no channel name: it always acts on the conversation you are in |
+| `/close`, `/part` | Same as `/leave` |
 
 ### Everything else
 

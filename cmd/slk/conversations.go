@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"slices"
 
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/ui"
@@ -67,6 +68,73 @@ func (h *rtmEventHandler) addConversation(ch slack.Channel) (sidebar.ChannelItem
 
 	h.rememberConversation(item)
 	return item, finderItem, true
+}
+
+// OnConversationClosed handles the WS events that take a conversation
+// out of the user's list: channel_left, group_left, im_close,
+// mpim_close. Slack sends them to every client of the user, so this is
+// also the echo of a /leave made here.
+func (h *rtmEventHandler) OnConversationClosed(channelID string) {
+	h.removeConversation(channelID)
+}
+
+// removeConversation is addConversation's inverse: it drops the
+// conversation from both workspace snapshots, clears the cache row's
+// membership so the next start does not list it, and - if the
+// workspace is active - tells the UI with a ConversationClosedMsg. A
+// conversation the workspace holds no row for is left alone, so the
+// echo of a removal already applied sends nothing. Only the serialized
+// event owner may call it.
+func (h *rtmEventHandler) removeConversation(channelID string) {
+	if h.wsCtx == nil {
+		return
+	}
+	i := slices.IndexFunc(h.wsCtx.Channels, func(it sidebar.ChannelItem) bool { return it.ID == channelID })
+	if i < 0 {
+		return
+	}
+	item := h.wsCtx.Channels[i]
+	// New slices, not an in-place delete: a workspace switch hands the
+	// UI these backing arrays, and a delete would shift rows under it.
+	h.wsCtx.Channels = slices.Concat(h.wsCtx.Channels[:i], h.wsCtx.Channels[i+1:])
+	h.wsCtx.FinderItems = slices.DeleteFunc(slices.Clone(h.wsCtx.FinderItems), func(it core.ChannelFinderItem) bool {
+		return it.ID == channelID
+	})
+	h.wsCtx.ForgetConversation(channelID)
+	if h.db != nil {
+		if cached, err := h.db.GetChannel(channelID); err == nil && cached.WorkspaceID == h.workspaceID {
+			cached.IsMember = false
+			_ = h.db.UpsertChannel(cached)
+		}
+	}
+	// discoverConversation adds a row for a message on a conversation
+	// the notifier maps do not hold. A closed DM must come back that
+	// way when someone posts in it. A left channel must not: Slack
+	// can post a "left the channel" notice there, so it keeps its entry.
+	if item.Type == "dm" || item.Type == "group_dm" || item.Type == "app" {
+		delete(h.channelNames, channelID)
+		delete(h.channelTypes, channelID)
+	}
+	if h.program == nil || (h.isActive != nil && !h.isActive()) {
+		return
+	}
+	h.program.Send(ui.ConversationClosedMsg{TeamID: h.workspaceID, ChannelID: channelID})
+}
+
+// queueConversationClosed hands a conversation Slack agreed to leave or
+// close to the event owner, which alone may remove its rows. The
+// channel_left / im_close echo normally does that work; the queue
+// covers a socket that is down when Slack accepts the call, and makes
+// the removal independent of the echo arriving.
+func (h *rtmEventHandler) queueConversationClosed(channelID string) {
+	if h == nil || h.starWake == nil {
+		return
+	}
+	h.closedConversations.Store(channelID, struct{}{})
+	select {
+	case h.starWake <- struct{}{}:
+	default:
+	}
 }
 
 // upsertFinderItem refreshes one workspace finder entry by conversation ID.

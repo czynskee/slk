@@ -24,6 +24,7 @@ func TestGridPerWorkspaceFrames_ClassifiesEveryDispatchedType(t *testing.T) {
 		"channel_section_upserted", "channel_section_deleted",
 		"channel_sections_channels_upserted", "channel_sections_channels_removed",
 		"mpim_open", "im_created", "im_open", "group_joined", "channel_joined",
+		"channel_left", "group_left", "im_close", "mpim_close",
 		"thread_subscribed", "thread_unsubscribed", "thread_marked",
 		"member_joined_channel", "member_left_channel",
 		"user_invalidated", "dnd_invalidated",

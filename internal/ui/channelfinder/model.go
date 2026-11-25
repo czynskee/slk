@@ -234,6 +234,19 @@ func (m *Model) MarkJoined(channelID string) {
 	}
 }
 
+// Remove drops channelID's row: the user left the channel or closed
+// the DM. Typing a left channel's name finds it again through the
+// server search, as for any channel the user is not in.
+func (m *Model) Remove(channelID string) {
+	m.items = slices.DeleteFunc(m.items, func(it core.ChannelFinderItem) bool {
+		return !it.Synthetic && it.ID == channelID
+	})
+	m.pruneStatuses()
+	if m.visible {
+		m.filter()
+	}
+}
+
 // UpdateLastVisited sets the LastVisited timestamp for the matching
 // item, if any, and re-runs filter() if the overlay is currently
 // visible so the new ordering takes effect on the next render. No-op
