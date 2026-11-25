@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -157,6 +158,11 @@ type mockSlackAPI struct {
 	openConversationContextFn       func(ctx context.Context, params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
 	searchMessagesFn                func(ctx context.Context, query string, params slack.SearchParameters) (*slack.SearchMessages, error)
 	getUserGroupsContextFn          func(ctx context.Context, options ...slack.GetUserGroupsOption) ([]slack.UserGroup, error)
+
+	// What conversations.leave and conversations.close were called
+	// with, and the error both answer.
+	leftChannels, closedConversations []string
+	leaveErr                          error
 }
 
 func (m *mockSlackAPI) GetUserGroupsContext(ctx context.Context, options ...slack.GetUserGroupsOption) ([]slack.UserGroup, error) {
@@ -238,6 +244,16 @@ func (m *mockSlackAPI) AuthTest() (*slack.AuthTestResponse, error) {
 
 func (m *mockSlackAPI) JoinConversation(channelID string) (*slack.Channel, string, []string, error) {
 	return &slack.Channel{GroupConversation: slack.GroupConversation{Conversation: slack.Conversation{ID: channelID}}}, "", nil, nil
+}
+
+func (m *mockSlackAPI) LeaveConversationContext(ctx context.Context, channelID string) (bool, error) {
+	m.leftChannels = append(m.leftChannels, channelID)
+	return false, m.leaveErr
+}
+
+func (m *mockSlackAPI) CloseConversationContext(ctx context.Context, channelID string) (bool, bool, error) {
+	m.closedConversations = append(m.closedConversations, channelID)
+	return false, false, m.leaveErr
 }
 
 func (m *mockSlackAPI) GetPermalinkContext(ctx context.Context, params *slack.PermalinkParameters) (string, error) {
@@ -870,6 +886,31 @@ func TestGetPermalink(t *testing.T) {
 	}
 	if gotTS != "1700000001.000200" {
 		t.Errorf("ts = %q, want %q", gotTS, "1700000001.000200")
+	}
+}
+
+func TestLeaveChannelAndCloseConversation(t *testing.T) {
+	mock := &mockSlackAPI{}
+	client := &Client{api: mock}
+	if err := client.LeaveChannel(context.Background(), "C1"); err != nil {
+		t.Fatalf("LeaveChannel: %v", err)
+	}
+	if err := client.CloseConversation(context.Background(), "D1"); err != nil {
+		t.Fatalf("CloseConversation: %v", err)
+	}
+	if !slices.Equal(mock.leftChannels, []string{"C1"}) {
+		t.Errorf("conversations.leave called for %v, want [C1]", mock.leftChannels)
+	}
+	if !slices.Equal(mock.closedConversations, []string{"D1"}) {
+		t.Errorf("conversations.close called for %v, want [D1]", mock.closedConversations)
+	}
+
+	mock.leaveErr = errors.New("cant_leave_general")
+	if err := client.LeaveChannel(context.Background(), "C1"); !errors.Is(err, mock.leaveErr) {
+		t.Errorf("LeaveChannel err = %v, want wraps %v", err, mock.leaveErr)
+	}
+	if err := client.CloseConversation(context.Background(), "D1"); !errors.Is(err, mock.leaveErr) {
+		t.Errorf("CloseConversation err = %v, want wraps %v", err, mock.leaveErr)
 	}
 }
 

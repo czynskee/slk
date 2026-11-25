@@ -68,13 +68,12 @@ type WorkspaceContext struct {
 	// WebSocket event owner, so readers off those goroutines (the
 	// Activity fetch's org-wide feed filter) must not touch it; this
 	// set is the race-safe projection. The set's lifetime mirrors the
-	// rows': both are grow-only during a session (a conversation the
-	// user leaves keeps its row until the next connect rebuilds the
-	// list, so it also keeps passing the filter - the filter and the
-	// sidebar agree). Use MarkConversation / HasConversation;
-	// sync.Map's zero value is ready for use, and empty means "still
-	// booting", which callers treat as no-filter-yet rather than
-	// no-conversations.
+	// rows': a conversation the user leaves or closes loses its row
+	// and its entry together (removeConversation), so the filter and
+	// the sidebar agree. Use MarkConversation / ForgetConversation /
+	// HasConversation; sync.Map's zero value is ready for use, and
+	// empty means "still booting", which callers treat as
+	// no-filter-yet rather than no-conversations.
 	conversationIDs sync.Map // channel ID -> struct{}
 	// SectionStore holds the user's Slack-native sidebar sections for
 	// this workspace. Nil when use_slack_sections is disabled, the
@@ -267,6 +266,14 @@ func (w *WorkspaceContext) HasAnyConversation() bool {
 func (w *WorkspaceContext) MarkConversation(channelID string) {
 	if w != nil && channelID != "" {
 		w.conversationIDs.Store(channelID, struct{}{})
+	}
+}
+
+// ForgetConversation is MarkConversation's inverse, alongside the
+// removal of a row from the Channels slice. Safe from any goroutine.
+func (w *WorkspaceContext) ForgetConversation(channelID string) {
+	if w != nil {
+		w.conversationIDs.Delete(channelID)
 	}
 }
 

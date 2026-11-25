@@ -219,7 +219,7 @@ type MessageService interface {
 //
 // Largest service in the App. Mixes three concerns that happen to
 // share the channel-as-domain-object boundary:
-//   - Slack API: Fetch, FetchOlder, MarkRead, Join.
+//   - Slack API: Fetch, FetchOlder, MarkRead, Join, Leave.
 //   - Local cache: ReadCache, SyncedAt.
 //   - Session bookkeeping: Lookup, RecordVisit, MembershipFetch.
 //
@@ -318,6 +318,17 @@ type ChannelService interface {
 	// whose resolved Msg is ChannelStarSetMsg; the requesting path
 	// applies the sidebar move optimistically and reverts on the error.
 	SetStarred(teamID ids.TeamID, channelID ids.ChannelID, starred bool) Cmd
+
+	// Leave takes channelID's conversation out of the user's list in
+	// teamID's workspace: conversations.leave for a channel
+	// (channelType "channel" or "private"), conversations.close for a
+	// DM or group DM. The team is the one the user was looking at, as
+	// for SetStarred. Returns a Cmd that delivers
+	// ConversationLeaveFailedMsg when Slack refuses and nil when it
+	// agrees: the row then goes with the ConversationClosedMsg the
+	// engine sends, which is also how a leave made in another client
+	// arrives.
+	Leave(teamID ids.TeamID, channelID ids.ChannelID, channelType string) Cmd
 }
 
 // SearchService runs message searches. SearchChannel queries the local

@@ -913,6 +913,26 @@ type ChannelStarSetMsg struct {
 	Err       error
 }
 
+// ConversationClosedMsg is sent when a conversation left the user's
+// list in TeamID's workspace: the user left a channel or closed a DM,
+// here (/leave) or in another client. The engine has already dropped
+// its own rows; the App drops the sidebar and finder rows and, when the
+// conversation is the one on screen, moves to another.
+type ConversationClosedMsg struct {
+	TeamID    string
+	ChannelID string
+}
+
+// ConversationLeaveFailedMsg is the answer to a /leave Slack refused
+// (the ChannelService.Leave command). Nothing was removed. Name is the
+// conversation as the toast names it; the requesting path fills it,
+// because the answer can arrive after a workspace switch.
+type ConversationLeaveFailedMsg struct {
+	ChannelID string
+	Name      string
+	Err       error
+}
+
 // previewLoadedMsg is dispatched after a preview thumb has been fetched.
 // The receiver constructs (or, when isCycle is set, swaps the image of)
 // an imgpkg.Preview and stores it on the App.

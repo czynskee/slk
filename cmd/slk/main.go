@@ -1011,6 +1011,33 @@ func run() error {
 					return ui.ChannelStarSetMsg{TeamID: string(teamID), ChannelID: chIDStr, Starred: starred}
 				}
 			},
+			Leave: func(teamID ids.TeamID, channelID ids.ChannelID, channelType string) core.Cmd {
+				// The requested workspace, not router.Active(), for the
+				// reason SetStarred gives.
+				wctx := router.ByID(string(teamID))
+				chIDStr := string(channelID)
+				if wctx == nil || wctx.Client == nil {
+					return func() core.Msg {
+						return ui.ConversationLeaveFailedMsg{ChannelID: chIDStr, Err: fmt.Errorf("no connected workspace")}
+					}
+				}
+				client := wctx.Client
+				return func() core.Msg {
+					leaveCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					var err error
+					if channelType == "channel" || channelType == "private" {
+						err = client.LeaveChannel(leaveCtx, chIDStr)
+					} else {
+						err = client.CloseConversation(leaveCtx, chIDStr)
+					}
+					if err != nil {
+						return ui.ConversationLeaveFailedMsg{ChannelID: chIDStr, Err: err}
+					}
+					wctx.RTMHandler.queueConversationClosed(chIDStr)
+					return nil
+				}
+			},
 			Fetch: func(channelID ids.ChannelID, channelName string) core.Msg {
 				chIDStr := string(channelID)
 				wctx := router.Active()

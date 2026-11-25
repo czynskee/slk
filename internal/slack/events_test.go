@@ -43,6 +43,7 @@ type mockEventHandler struct {
 	threadSubChanges []threadSubChangeRecord
 
 	lastConversationOpenedID string
+	conversationsClosed      []string
 	lastConversationOpenedCh slack.Channel
 
 	sectionUpserted               *ChannelSectionUpserted
@@ -180,6 +181,10 @@ func (m *mockEventHandler) OnThreadSubscriptionChanged(channelID, threadTS, last
 func (m *mockEventHandler) OnConversationOpened(ch slack.Channel) {
 	m.lastConversationOpenedID = ch.ID
 	m.lastConversationOpenedCh = ch
+}
+
+func (m *mockEventHandler) OnConversationClosed(channelID string) {
+	m.conversationsClosed = append(m.conversationsClosed, channelID)
 }
 
 func (m *mockEventHandler) OnChannelSectionUpserted(ev ChannelSectionUpserted) {
@@ -872,6 +877,29 @@ func TestDispatch_ChannelJoined(t *testing.T) {
 	dispatchWebSocketEvent(payload, h)
 	if h.lastConversationOpenedID != "C1" {
 		t.Errorf("OnConversationOpened not called or wrong ID; got %q", h.lastConversationOpenedID)
+	}
+}
+
+func TestDispatch_ConversationClosed(t *testing.T) {
+	for _, tc := range []struct{ payload, want string }{
+		{`{"type":"channel_left","channel":"C1"}`, "C1"},
+		{`{"type":"group_left","channel":"G1"}`, "G1"},
+		{`{"type":"im_close","user":"U1","channel":"D1"}`, "D1"},
+		{`{"type":"mpim_close","user":"U1","channel":"G3"}`, "G3"},
+	} {
+		h := &mockEventHandler{}
+		dispatchWebSocketEvent([]byte(tc.payload), h)
+		if !slices.Equal(h.conversationsClosed, []string{tc.want}) {
+			t.Errorf("%s: OnConversationClosed calls = %v, want [%s]", tc.payload, h.conversationsClosed, tc.want)
+		}
+	}
+}
+
+func TestDispatch_ConversationClosedWithoutAChannelIsIgnored(t *testing.T) {
+	h := &mockEventHandler{}
+	dispatchWebSocketEvent([]byte(`{"type":"channel_left"}`), h)
+	if len(h.conversationsClosed) != 0 {
+		t.Errorf("OnConversationClosed calls = %v, want none", h.conversationsClosed)
 	}
 }
 

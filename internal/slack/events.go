@@ -128,6 +128,14 @@ type EventHandler interface {
 	// without an extra conversations.info round-trip.
 	OnConversationOpened(channel slack.Channel)
 
+	// OnConversationClosed is delivered when a conversation leaves the
+	// user's list mid-session: channel_left and group_left (the user
+	// left, or was removed from, a channel) and im_close and
+	// mpim_close (a DM or group DM was closed). Slack sends these
+	// to every client of the user, so a leave made in another client
+	// arrives the same way as one made here.
+	OnConversationClosed(channelID string)
+
 	// OnChannelSectionUpserted is called for channel_section_upserted
 	// WS events: section create, rename, reorder, or emoji change.
 	OnChannelSectionUpserted(ev ChannelSectionUpserted)
@@ -452,6 +460,14 @@ type wsChannelMarkedEvent struct {
 type wsConversationOpenedEvent struct {
 	Type    string        `json:"type"`
 	Channel slack.Channel `json:"channel"`
+}
+
+// wsConversationClosedEvent is the shared shape for channel_left,
+// group_left, im_close and mpim_close. Unlike the opened events,
+// `channel` is the bare conversation ID.
+type wsConversationClosedEvent struct {
+	Type    string `json:"type"`
+	Channel string `json:"channel"`
 }
 
 // wsPrefChangeEvent represents a pref_change WS event. Slack ships
@@ -787,6 +803,15 @@ func dispatchWebSocketEvent(data []byte, handler EventHandler) {
 		}
 		if evt.Channel.ID != "" {
 			handler.OnConversationOpened(evt.Channel)
+		}
+
+	case "channel_left", "group_left", "im_close", "mpim_close":
+		var evt wsConversationClosedEvent
+		if err := json.Unmarshal(data, &evt); err != nil {
+			return
+		}
+		if evt.Channel != "" {
+			handler.OnConversationClosed(evt.Channel)
 		}
 
 	case "thread_marked":

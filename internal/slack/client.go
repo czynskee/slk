@@ -52,6 +52,8 @@ type SlackAPI interface {
 	GetPermalinkContext(ctx context.Context, params *slack.PermalinkParameters) (string, error)
 	AuthTest() (*slack.AuthTestResponse, error)
 	JoinConversation(channelID string) (*slack.Channel, string, []string, error)
+	LeaveConversationContext(ctx context.Context, channelID string) (bool, error)
+	CloseConversationContext(ctx context.Context, channelID string) (noOp bool, alreadyClosed bool, err error)
 	SetUserPresenceContext(ctx context.Context, presence string) error
 	GetUserPresenceContext(ctx context.Context, user string) (*slack.UserPresence, error)
 	SetUserCustomStatusContext(ctx context.Context, statusText, statusEmoji string, statusExpiration int64) error
@@ -784,6 +786,27 @@ func (c *Client) JoinChannel(ctx context.Context, channelID string) error {
 	_, _, _, err := c.api.JoinConversation(channelID)
 	if err != nil {
 		return fmt.Errorf("joining channel %s: %w", channelID, err)
+	}
+	return nil
+}
+
+// LeaveChannel leaves a public or private channel via
+// conversations.leave. Leaving a channel the user is not in is not an
+// error.
+func (c *Client) LeaveChannel(ctx context.Context, channelID string) error {
+	if _, err := c.api.LeaveConversationContext(ctx, channelID); err != nil {
+		return fmt.Errorf("leaving channel %s: %w", channelID, err)
+	}
+	return nil
+}
+
+// CloseConversation closes a DM or group DM via conversations.close.
+// The conversation and its history stay; it only leaves the user's
+// list until someone posts in it again. Closing one that is already
+// closed is not an error.
+func (c *Client) CloseConversation(ctx context.Context, channelID string) error {
+	if _, _, err := c.api.CloseConversationContext(ctx, channelID); err != nil {
+		return fmt.Errorf("closing conversation %s: %w", channelID, err)
 	}
 	return nil
 }

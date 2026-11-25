@@ -69,9 +69,10 @@ type rtmEventHandler struct {
 	gridSiblings func() []string
 
 	// starWake is the shared pending-events wake channel: the star
-	// queue below and the user resolver's resolved-peer queue both
-	// signal it, and PendingEvents hands it to the client's dispatcher
-	// so OnPendingEvents drains both on the serialized event owner.
+	// queue below, the closed-conversation queue and the user
+	// resolver's resolved-peer queue all signal it, and PendingEvents
+	// hands it to the client's dispatcher so OnPendingEvents drains
+	// them on the serialized event owner.
 	// Nil in tests constructed without wiring, which disables the wake
 	// (the dispatcher treats a nil channel as no pending handler).
 	// starMu guards starApplies, the queued star-state changes a
@@ -81,6 +82,11 @@ type rtmEventHandler struct {
 	starWake    chan struct{}
 	starMu      sync.Mutex
 	starApplies []starApply
+	// closedConversations holds the conversations a successful
+	// conversations.leave / conversations.close handed over from the
+	// command goroutine, for the event owner to remove
+	// (queueConversationClosed). Signals starWake too.
+	closedConversations sync.Map // channel ID -> struct{}
 
 	// backfillGate enforces a 30 s minimum between reconnect-driven
 	// catch-up passes. Per-handler so each workspace has its own gate.
